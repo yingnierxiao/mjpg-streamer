@@ -154,6 +154,7 @@ clean:
 	make -C plugins/input_testpicture $@
 	make -C plugins/output_file $@
 	make -C plugins/output_http $@
+	make -C plugins/output_http_post $@
 	make -C plugins/output_udp $@
 	make -C plugins/output_autofocus $@
 	make -C plugins/output_viewer $@
