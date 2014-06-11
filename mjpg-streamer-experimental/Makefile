@@ -19,15 +19,14 @@ SVNDEV := -D'SVN_REV="$(shell svnversion -c .)"'
 CFLAGS += $(SVNDEV)
 
 # general compile flags, enable all warnings to make compile more verbose
-CFLAGS += -DLINUX -D_GNU_SOURCE -Wall 
+CFLAGS += -DLINUX -D_GNU_SOURCE -Wall  
 CFLAGS += -g -Wuninitialized
 CFLAGS +=  -DDEBUG
 
 # we are using the libraries "libpthread" and "libdl"
 # libpthread is used to run several tasks (virtually) in parallel
 # libdl is used to load the plugins (shared objects) at runtime
-LFLAGS += -lpthread -ldl
-
+LFLAGS += -lpthread -ldl 
 # define the name of the program
 APP_BINARY = mjpg_streamer
 
@@ -154,7 +153,7 @@ clean:
 	make -C plugins/input_testpicture $@
 	make -C plugins/output_file $@
 	make -C plugins/output_http $@
-	make -C plugins/output_http_post $@
+	make -C plugins/output_http_push $@
 	make -C plugins/output_udp $@
 	make -C plugins/output_autofocus $@
 	make -C plugins/output_viewer $@

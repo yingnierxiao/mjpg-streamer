@@ -158,9 +158,11 @@ bool su_startPost(int socket, const char* request, ...)
 
 my_timestamp su_getCurUsec()
 {
-    static struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return 1000000ll*tv.tv_sec+tv.tv_usec;
+    static struct timespec ts;  
+    clock_gettime(CLOCK_REALTIME,&ts);
+
+//gettimeofday(&tv, NULL);
+    return 1000000ll*ts.tv_sec+ts.tv_nsec/1000;
 }
 
 

@@ -2,8 +2,10 @@
 #                                                                              #
 #      MJPG-streamer allows to stream JPG frames from an input-plugin          #
 #      to several output plugins                                               #
+#      This is output plugin to send data to web server directly,              #
+#      useful if device has no white ip for example	                       #
 #                                                                              #
-#      Copyright (C) 2007 Tom Stöveken                                         #
+#      Copyright (C) 2014 Ivan Rogozhev                                        #
 #                                                                              #
 # This program is free software; you can redistribute it and/or modify         #
 # it under the terms of the GNU General Public License as published by         #
@@ -36,11 +38,13 @@
 #include <time.h>
 #include <syslog.h>
 #include <dirent.h>
+#include <limits.h>
 
 #include <linux/types.h>          /* for videodev2.h */
 #include <linux/videodev2.h>
 
 #include "serverUtils.h"
+#include "jpegUtils.h"
 
 #include "../../utils.h"
 #include "../../mjpg_streamer.h"
@@ -49,8 +53,14 @@
 
 static pthread_t worker;
 static globals *pglobal;
-static int  max_frame_size=0;
+
+// unconverted jpeg
+static unsigned long  max_frame_size=0;
 static unsigned char *frame = NULL;
+
+// converted jpeg
+static unsigned long progressiveBufferSize = 0;	
+static unsigned char *progressiveBuffer = NULL;
 // write socket
 static int wSocket = 0;
 struct sockaddr writeAddress={0};
@@ -125,6 +135,8 @@ void worker_cleanup(void *arg)
     if(frame != NULL) {
         free(frame);
     }
+
+   // if(progressiveBuffer) free(progressiveBuffer);
     
     if(wSocket>0)
     {
@@ -149,17 +161,30 @@ void *worker_thread(void *arg)
     
 	
     unsigned char *tmp_framebuffer = NULL;
-    int frame_size = 0;
+    long frame_size = 0;
     /* set cleanup handler to cleanup allocated ressources */
     pthread_cleanup_push(worker_cleanup, NULL);
 
-    static struct timespec sleepTime={0,1000000};
+    static struct timespec sleepTime1={0,1000000};
     static struct timespec remain={0,0};
 
+    unsigned long cropSize = ULONG_MAX;
+    //long progressiveSize=0;
+    my_timestamp frameTime = frames>0?1000000/frames:0;
 
+
+    unsigned long actualSize;
+
+	pthread_mutex_lock(&pglobal->in[input_number].db);
+        
+	pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
+	pthread_mutex_unlock(&pglobal->in[input_number].db);
 
     while(reconnectAttempts != 0 && !pglobal->stop) {
         
+
+	
+	
 	if(!connected)
 	{
 		connected = su_connectOutput(&wSocket,writeAddress);
@@ -170,7 +195,7 @@ void *worker_thread(void *arg)
 		}else
 		{
 			connectAttempts--;
-			nanosleep(&sleepTime,&remain);
+			nanosleep(&sleepTime1,&remain);
 		}
 	}		
 	
@@ -182,16 +207,22 @@ void *worker_thread(void *arg)
 
 	}
 	DBG("waiting for fresh frame\n");
+	
+	
+	my_timestamp startTime = su_getCurUsec();
 
         pthread_mutex_lock(&pglobal->in[input_number].db);
-        pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
-
+        
+	// just sending all
+	if(frameTime==0){
+		pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
+	}
         /* read buffer */
         frame_size = pglobal->in[input_number].size;
 
         /* check if buffer for frame is large enough, increase it if necessary */
         if(frame_size > max_frame_size) {
-            DBG("increasing buffer size to %d\n", frame_size);
+            DBG("increasing buffer size to %d\n", (int)frame_size);
 
             max_frame_size = frame_size + (1 << 16);
             if((tmp_framebuffer = realloc(frame, max_frame_size)) == NULL) {
@@ -209,14 +240,67 @@ void *worker_thread(void *arg)
         /* allow others to access the global buffer again */
         pthread_mutex_unlock(&pglobal->in[input_number].db);
 
-	        
+	
+
+	/*converting to progressive */
+
+
+	ju_processFrame(frame, frame_size, &progressiveBuffer, &progressiveBufferSize);
+	
+	actualSize = ju_cropJpeg(progressiveBuffer,progressiveBufferSize,cropSize);
+	
+	my_timestamp codingTime=su_getCurUsec()-startTime;
+
+	
+
 	DBG("sending frame\n");
-	connected =su_sendFrame(wSocket, FRAME_STRING, frame, frame_size );         
+	connected =su_sendFrame(wSocket, FRAME_STRING, progressiveBuffer, actualSize );         
 	
-	
-	
+
+
+	OPRINT("ct = %d\n",(int) codingTime);
+	if(connected)
+	{
+
+		if(frameTime>0){
+
+			my_timestamp endtime = su_getCurUsec();
+			my_timestamp realFrameTime = endtime-startTime;
+			my_timestamp sendTime = endtime-codingTime;
+
+			my_timestamp usableFrameTime =frameTime;
+			if((codingTime>(3*frameTime/4)))
+			{
+				OPRINT("ERROR: Sending images too fast, unable to convert in time\n");
+				usableFrameTime = codingTime*4/3;
+			OPRINT("fps downed to %d, base ft = %d, ft = %d \n",(int)(1000000/usableFrameTime), (int)frameTime,(int)usableFrameTime);
+
+			}
+		
+		
+
+			//    bytes/microsec
+			double bpu =((double)actualSize)/(double)sendTime;
+			//   time we want to send data
+			double desiredSendTime = (double)(usableFrameTime-codingTime);
+			// cropping size for jpeg calculated			
+			cropSize =(long)(desiredSendTime*bpu);
+		
+			my_timestamp timeToSleep = usableFrameTime-realFrameTime;
+		
+			if(timeToSleep>0)
+			{
+				struct timespec sleepTime={0,timeToSleep*1000};
+				nanosleep(&sleepTime,&remain);
+			}	
+		}
+
+	}	
         
     }
+
+
+    if(progressiveBuffer) free(progressiveBuffer);
 
     /* cleanup now */
     pthread_cleanup_pop(1);

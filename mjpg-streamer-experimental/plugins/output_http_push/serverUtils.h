@@ -1,5 +1,5 @@
-#ifndef OUTPUT_HTTP_PUSH_H
-#define OUTPUT_HTTP_PUSH_H
+#ifndef SERVER_UTILS_H
+#define SERVER_UTILS_H
 
 #define OUT_FILE_CMD_TAKE           1
 #define OUT_FILE_CMD_FILENAME       2

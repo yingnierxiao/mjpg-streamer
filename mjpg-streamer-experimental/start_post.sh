@@ -27,7 +27,7 @@
 export LD_LIBRARY_PATH="$(pwd)"
 #./mjpg_streamer -i "input_uvc.so --help"
 
-./mjpg_streamer -i "./input_uvc.so -d /dev/video1 -f 15 -r 640x480 -y -q 20" -o "./output_http_push.so -p 5001 -a ?oid=test"
+./mjpg_streamer -i "./input_uvc.so -d /dev/video0  -r 320x240 " -o "./output_http_push.so -p 5001 -f 30 -a ?oid=test"
 
 
 #./mjpg_streamer -i "./input_uvc.so -d /dev/video0" -o "./output_http.so -w ./www"
