@@ -256,7 +256,9 @@ void *worker_thread(void *arg)
 	DBG("sending frame\n");
 	connected =su_sendFrame(wSocket, FRAME_STRING, progressiveBuffer, actualSize );         
 	
-
+	free(progressiveBuffer);
+	progressiveBuffer=NULL;
+	progressiveBufferSize=0;
 
 	OPRINT("ct = %d\n",(int) codingTime);
 	if(connected)
