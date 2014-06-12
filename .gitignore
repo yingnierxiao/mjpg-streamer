@@ -10,3 +10,6 @@
 *.lai
 *.la
 *.a
+
+mjpg-streamer-experimental/.cproject
+mjpg-streamer-experimental/.project
