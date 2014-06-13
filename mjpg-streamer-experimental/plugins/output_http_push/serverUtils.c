@@ -8,7 +8,7 @@
 #include <sys/time.h>
 
 #include <netdb.h>
-
+#include <netinet/tcp.h>
 #include <unistd.h>
 #include <stdarg.h>
 #include <errno.h>
@@ -175,7 +175,7 @@ bool su_connectOutput(int* writesock, struct sockaddr writeAddr)
 
     if((error=connect(localSocket, &writeAddr, sizeof(writeAddr))) < 0)
     {
-	*writesock=0;
+        *writesock=0;
         DBG("Connect() failed! error %d %s\n",errno,strerror(errno));
         return false;
     }
@@ -188,6 +188,15 @@ bool su_connectOutput(int* writesock, struct sockaddr writeAddr)
  	DBG("setsockopt() failed! error %d %s\n",errno,strerror(errno));
         return false;
     }
+    int flag = 1;
+    if(setsockopt(localSocket,IPPROTO_TCP,TCP_NODELAY,(char *)&flag,sizeof(flag)) !=0)
+    {
+        *writesock=0;
+        close(localSocket);
+        DBG("setsockopt() failed! error %d %s\n",errno,strerror(errno));
+        return false;
+    }
+
     *writesock=localSocket;
     return true;
 }
