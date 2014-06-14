@@ -8,29 +8,43 @@
 struct jpeg_compress_struct cinfo;
 struct jpeg_decompress_struct dinfo;
 
-struct jpeg_error_mgr       jerr;
+struct jpeg_error_mgr       jcerr,jderr;
  
 
 jvirt_barray_ptr * data = NULL;
 
 
 void finishDecoding(void){
-	jpeg_finish_decompress(&dinfo);
+
 	jpeg_destroy_decompress(&dinfo);
 
 }
 void finishEncoding(void){
-	jpeg_finish_compress(&cinfo);
+
 	jpeg_destroy_compress(&cinfo);
 }
 
 
 
+void ju_prepare()
+{
+
+
+    dinfo.err = jpeg_std_error(&jderr);
+    jpeg_create_decompress(&dinfo);
+    cinfo.err = jpeg_std_error(&jcerr);
+    jpeg_create_compress(&cinfo);
+
+    //2 MB to both
+    cinfo.mem->max_memory_to_use = 2*1024*1024;
+    dinfo.mem->max_memory_to_use = 2*1024*1024;
+}
+
+
 
 void prepareDecoding(unsigned char* inJpg, unsigned long inJpgSize)
 {
-	dinfo.err = jpeg_std_error(&jerr);
-	jpeg_create_decompress(&dinfo);
+
 	//dinfo.raw_data_out=TRUE;
 	//printf ("here1");
 	jpeg_mem_src(&dinfo,inJpg,inJpgSize);
@@ -50,9 +64,7 @@ void prepareEncoding(unsigned char** outJpg, unsigned long* outJpgSize)
 {
 
 
-	cinfo.err = jpeg_std_error(&jerr);
-	jpeg_create_compress(&cinfo); 	
-	
+
 
 	
 	//jpeg_set_quality(&cinfo, 80, TRUE); //todo upgrade
@@ -77,42 +89,7 @@ void prepareEncoding(unsigned char** outJpg, unsigned long* outJpgSize)
 
 void copyData()
 {
-	/*int readLines = dinfo.max_v_samp_factor*DCTSIZE;
-	int cc =dinfo.out_color_components;
-	JSAMPLE * linear = malloc(sizeof(JSAMPLE)*readLines* dinfo.output_width * cc); // linear struct
-	JSAMPLE* iter = linear;
-	JSAMPROW cols[cc];
-	JSAMPARRAY data[cc];
-	for( int c = 0; c != cc; ++c )
-	{
-    		cols[ c ]=malloc( readLines * sizeof(JSAMPLE *) );
-
-    		for( int i = 0; i != lines; ++i, iter += dinfo.output_width )
-    		{
-        		cols[ c ][ i ] = iter;
-    		}
-	data[c] = &cols[c][0];
-	}	 	
-	
-	for( int row = 0; row < (int) dinfo.output_height; row += readLines )
-	{
-    		jpeg_read_raw_data( &dinfo, data, readLines );
-		jpeg_write_raw_data(&cinfo, data, readLines );
-
-	}
-	
-	for( int c = 0; c != cc; ++c )
-	{
-    		free(cols[ c ]);
-	}
-	free(linear);
-*/
-	//jvirt_barray_ptr * data =jpeg_read_coefficients(&dinfo);
-	//if(data == NULL)
-	//printf ("wtf");
-
 	jpeg_write_coefficients(&cinfo,data);
-	//printf ("pass3");
 }
 
 
@@ -124,16 +101,21 @@ int ju_processFrame(unsigned char* inJpg, unsigned long inJpgSize, unsigned char
 	
 	copyData();
 
-	finishEncoding();// should be first to copy coefficients data
-	//printf ("pass4");
-	finishDecoding();
-	//printf ("pass5");
+
+    // should be first to copy coefficients data
+    jpeg_finish_compress(&cinfo);
+    jpeg_finish_decompress(&dinfo);
+
 	return 0;//TODO error handling!!!
 }
 
 #define MARKER_START ((unsigned char)0xFF)
 #define MARKER_EOI ((unsigned char)0xD9)
 #define MARKER_SOS ((unsigned char)0xDA)
+#define MARKER_REGULAR ((unsigned char)0xC0)
+#define MARKER_REGULAR_EXT ((unsigned char)0xC1)
+#define MARKER_PROGRESSIVE ((unsigned char)0xC2)
+
 
 unsigned long ju_cropJpeg (unsigned char* jpg, unsigned long jpgSize, unsigned long maxCropSize)
 {
@@ -203,6 +185,38 @@ unsigned long ju_cropJpeg (unsigned char* jpg, unsigned long jpgSize, unsigned l
 	return sectionStart+1;
 	
 }
+
+
+
+//#define MARKER_REGULAR ((unsigned char)0xC0)
+//#define MARKER_REGULAR_EXT ((unsigned char)0xC1)
+//#define MARKER_PROGRESSIVE ((unsigned char)0xC2)
+
+
+int ju_checkIfJpeg(unsigned char* jpg, unsigned long jpgSize)
+{
+    for(int i=0;i<jpgSize-1;i++)
+    {
+        if(jpg[i]==MARKER_START)
+        {
+            switch(jpg[i+1]){
+            //what if...
+            case MARKER_REGULAR:
+            case MARKER_REGULAR_EXT:
+                // regular
+                return JPEG_GOOD_REGULAR;
+            case MARKER_PROGRESSIVE:
+                return JPEG_GOOD_PROGRESSIVE;
+            }
+
+        }
+    }
+    return JPEG_BAD;
+}
+
+
+
+
 
 void ju_cleanup()
 {

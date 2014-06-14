@@ -162,7 +162,7 @@ int compress_image_to_jpeg(struct vdIn *vd, unsigned char *buffer, int size, int
 
     jpeg_set_defaults(&cinfo);
     jpeg_set_quality(&cinfo, quality, TRUE);
-
+    jpeg_simple_progression(&cinfo);
     jpeg_start_compress(&cinfo, TRUE);
 
     z = 0;

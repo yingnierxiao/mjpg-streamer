@@ -175,6 +175,9 @@ void *worker_thread(void *arg)
 
     unsigned long actualSize;
 
+    // prepare coders
+    ju_prepare();
+
 	pthread_mutex_lock(&pglobal->in[input_number].db);
         
 	pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
@@ -241,12 +244,32 @@ void *worker_thread(void *arg)
         pthread_mutex_unlock(&pglobal->in[input_number].db);
 
 	
+        int jpgType = ju_checkIfJpeg(frame, frame_size);
 
-	/*converting to progressive */
+
+        switch(jpgType){
+            // bad frame come. this happen sometimes, causing jpeg lib to crush
+            case JPEG_BAD:
+            DBG("bad jpg\n");
+                continue; // just skip it
+            // need to convert
+        case JPEG_GOOD_REGULAR:
+            DBG("regular jpg\n");
+            ju_processFrame(frame, frame_size, &progressiveBuffer, &progressiveBufferSize);
+            break;
+            // already progressive
+        case JPEG_GOOD_PROGRESSIVE:
+            DBG("progressive jpg\n");
+            progressiveBuffer=frame;
+            progressiveBufferSize=frame_size;
+            break;
+        };
 
 
-	ju_processFrame(frame, frame_size, &progressiveBuffer, &progressiveBufferSize);
-	
+
+
+    /*cropping image */
+
 	actualSize = ju_cropJpeg(progressiveBuffer,progressiveBufferSize,cropSize);
 	
 	my_timestamp codingTime=su_getCurUsec()-startTime;
@@ -255,8 +278,10 @@ void *worker_thread(void *arg)
 
 	DBG("sending frame\n");
 	connected =su_sendFrame(wSocket, FRAME_STRING, progressiveBuffer, actualSize );         
-	
-	free(progressiveBuffer);
+    if((progressiveBuffer!=frame))
+    {
+        free(progressiveBuffer);
+    }
 	progressiveBuffer=NULL;
 	progressiveBufferSize=0;
 
@@ -303,6 +328,9 @@ void *worker_thread(void *arg)
 
 
     if(progressiveBuffer) free(progressiveBuffer);
+
+    //cleanup coders
+    ju_cleanup();
 
     /* cleanup now */
     pthread_cleanup_pop(1);
