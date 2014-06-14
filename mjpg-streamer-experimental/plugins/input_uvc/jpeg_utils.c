@@ -32,7 +32,7 @@
 
 #include "v4l2uvc.h"
 
-#define OUTPUT_BUF_SIZE  4096
+#define OUTPUT_BUF_SIZE  1024*1024*4
 
 typedef struct {
     struct jpeg_destination_mgr pub; /* public fields */

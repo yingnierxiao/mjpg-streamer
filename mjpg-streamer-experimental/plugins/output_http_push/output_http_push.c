@@ -58,9 +58,7 @@ static globals *pglobal;
 static unsigned long  max_frame_size=0;
 static unsigned char *frame = NULL;
 
-// converted jpeg
-static unsigned long progressiveBufferSize = 0;	
-static unsigned char *progressiveBuffer = NULL;
+
 // write socket
 static int wSocket = 0;
 struct sockaddr writeAddress={0};
@@ -153,6 +151,12 @@ Description.: this is the main worker thread
 Input Value.:
 Return Value:
 ******************************************************************************/
+
+
+// converted jpeg
+static int progressiveBufferSize =OUTPUT_BUF_SIZE;
+static unsigned char progressiveBuffer[OUTPUT_BUF_SIZE] ={ 0};
+
 void *worker_thread(void *arg)
 {
 
@@ -162,6 +166,10 @@ void *worker_thread(void *arg)
 	
     unsigned char *tmp_framebuffer = NULL;
     long frame_size = 0;
+
+
+    int sendsize = 0;
+    unsigned char* sendbuf = NULL;
     /* set cleanup handler to cleanup allocated ressources */
     pthread_cleanup_push(worker_cleanup, NULL);
 
@@ -178,10 +186,10 @@ void *worker_thread(void *arg)
     // prepare coders
     ju_prepare();
 
-	pthread_mutex_lock(&pglobal->in[input_number].db);
+    //pthread_mutex_lock(&pglobal->in[input_number].db);
         
-	pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
-	pthread_mutex_unlock(&pglobal->in[input_number].db);
+    //pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
+    //pthread_mutex_unlock(&pglobal->in[input_number].db);
 
     while(reconnectAttempts != 0 && !pglobal->stop) {
         
@@ -213,9 +221,10 @@ void *worker_thread(void *arg)
 	
 	
 	my_timestamp startTime = su_getCurUsec();
-
+    DBG("truing mutex\n");
+    usleep(1);
         pthread_mutex_lock(&pglobal->in[input_number].db);
-        
+           DBG("muuutex\n");
 	// just sending all
 	if(frameTime==0){
 		pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
@@ -237,14 +246,17 @@ void *worker_thread(void *arg)
             frame = tmp_framebuffer;
         }
 
-        /* copy frame to our local buffer now */
-        memcpy(frame, pglobal->in[input_number].buf, frame_size);
-
+        if(frame_size>0)
+        {
+            /* copy frame to our local buffer now */
+            memcpy(frame, pglobal->in[input_number].buf, frame_size);
+        }
+        DBG("muuutex frreeee\n");
         /* allow others to access the global buffer again */
         pthread_mutex_unlock(&pglobal->in[input_number].db);
 
 	
-        int jpgType = ju_checkIfJpeg(frame, frame_size);
+        int jpgType = frame_size>0?ju_checkIfJpeg(frame, frame_size):JPEG_BAD;
 
 
         switch(jpgType){
@@ -255,14 +267,17 @@ void *worker_thread(void *arg)
             // need to convert
         case JPEG_GOOD_REGULAR:
             DBG("regular jpg\n");
-            ju_processFrame(frame, frame_size, &progressiveBuffer, &progressiveBufferSize);
+            sendsize = ju_processFrame(frame, frame_size, progressiveBuffer, progressiveBufferSize);
+            sendbuf = progressiveBuffer;
             break;
             // already progressive
         case JPEG_GOOD_PROGRESSIVE:
             DBG("progressive jpg\n");
-            progressiveBuffer=frame;
-            progressiveBufferSize=frame_size;
+            sendbuf=frame;
+            sendsize=frame_size;
             break;
+        default:
+            continue;//just in case
         };
 
 
@@ -270,20 +285,15 @@ void *worker_thread(void *arg)
 
     /*cropping image */
 
-	actualSize = ju_cropJpeg(progressiveBuffer,progressiveBufferSize,cropSize);
+    actualSize = ju_cropJpeg(sendbuf,sendsize,cropSize);
 	
 	my_timestamp codingTime=su_getCurUsec()-startTime;
 
 	
 
 	DBG("sending frame\n");
-	connected =su_sendFrame(wSocket, FRAME_STRING, progressiveBuffer, actualSize );         
-    if((progressiveBuffer!=frame))
-    {
-        free(progressiveBuffer);
-    }
-	progressiveBuffer=NULL;
-	progressiveBufferSize=0;
+    connected =su_sendFrame(wSocket, FRAME_STRING, sendbuf, actualSize );
+
 
 	OPRINT("ct = %d\n",(int) codingTime);
 	if(connected)
@@ -327,7 +337,7 @@ void *worker_thread(void *arg)
     }
 
 
-    if(progressiveBuffer) free(progressiveBuffer);
+  //  if(progressiveBuffer) free(progressiveBuffer);
 
     //cleanup coders
     ju_cleanup();

@@ -450,10 +450,16 @@ Description.: this thread worker grabs a frame and copies it to the global buffe
 Input Value.: unused
 Return Value: unused, always NULL
 ******************************************************************************/
+#define LOCAL_BUF_SIZE 4*1024*1024
+static unsigned char localbuffer[LOCAL_BUF_SIZE];//1 mb
+static const int localBufferSize=LOCAL_BUF_SIZE;
+
 void *cam_thread(void *arg)
 {
 
     context *pcontext = arg;
+
+    int realImgSize=0;
     pglobal = pcontext->pglobal;
 
     /* set cleanup handler to cleanup allocated ressources */
@@ -499,8 +505,8 @@ void *cam_thread(void *arg)
             DBG("Lagg: %ld\n", (current - last) - pcontext->videoIn->frame_period_time);
         }
 
-        /* copy JPG picture to global buffer */
-        pthread_mutex_lock(&pglobal->in[pcontext->id].db);
+
+
 
         /*
          * If capturing in YUV mode convert to JPEG now.
@@ -511,14 +517,22 @@ void *cam_thread(void *arg)
         #ifndef NO_LIBJPEG
         if ((pcontext->videoIn->formatIn == V4L2_PIX_FMT_YUYV) || (pcontext->videoIn->formatIn == V4L2_PIX_FMT_RGB565)) {
             DBG("compressing frame from input: %d\n", (int)pcontext->id);
-            pglobal->in[pcontext->id].size = compress_image_to_jpeg(pcontext->videoIn, pglobal->in[pcontext->id].buf, pcontext->videoIn->framesizeIn, gquality);
+            realImgSize = compress_image_to_jpeg(pcontext->videoIn, localbuffer, localBufferSize, gquality);
         } else {
         #endif
             DBG("copying frame from input: %d\n", (int)pcontext->id);
-            pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->buf.bytesused);
+            realImgSize = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->buf.bytesused);
         #ifndef NO_LIBJPEG
         }
         #endif
+
+
+        /* copy JPG picture to global buffer */
+        pthread_mutex_lock(&pglobal->in[pcontext->id].db);
+        DBG("muuutex\n");
+        pglobal->in[pcontext->id].size=realImgSize;
+        memcpy(pglobal->in[pcontext->id].buf,localbuffer,realImgSize);
+
 
 #if 0
         /* motion detection can be done just by comparing the picture size, but it is not very accurate!! */
@@ -533,7 +547,9 @@ void *cam_thread(void *arg)
 
         /* signal fresh_frame */
         pthread_cond_broadcast(&pglobal->in[pcontext->id].db_update);
+        DBG("unlocking\n");
         pthread_mutex_unlock(&pglobal->in[pcontext->id].db);
+        DBG("muuutex frreeee\n");
     }
 
     DBG("leaving input thread, calling cleanup function now\n");

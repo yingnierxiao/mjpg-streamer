@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <jpeglib.h>
+#include <string.h> // memcpy
 #include "jpegUtils.h"
 
 
@@ -13,6 +14,97 @@ struct jpeg_error_mgr       jcerr,jderr;
 
 jvirt_barray_ptr * data = NULL;
 
+typedef struct {
+    struct jpeg_destination_mgr pub; /* public fields */
+
+    JOCTET * buffer;    /* start of buffer */
+
+    unsigned char *outbuffer;
+    int outbuffer_size;
+    unsigned char *outbuffer_cursor;
+    int *written;
+
+} mjpg_destination_mgr;
+
+typedef mjpg_destination_mgr * mjpg_dest_ptr;
+
+/******************************************************************************
+Description.:
+Input Value.:
+Return Value:
+******************************************************************************/
+METHODDEF(void) init_destination(j_compress_ptr cinfo)
+{
+    mjpg_dest_ptr dest = (mjpg_dest_ptr) cinfo->dest;
+
+    /* Allocate the output buffer --- it will be released when done with image */
+    dest->buffer = (JOCTET *)(*cinfo->mem->alloc_small)((j_common_ptr) cinfo, JPOOL_IMAGE, OUTPUT_BUF_SIZE * sizeof(JOCTET));
+
+    *(dest->written) = 0;
+
+    dest->pub.next_output_byte = dest->buffer;
+    dest->pub.free_in_buffer = OUTPUT_BUF_SIZE;
+}
+
+/******************************************************************************
+Description.: called whenever local jpeg buffer fills up
+Input Value.:
+Return Value:
+******************************************************************************/
+METHODDEF(boolean) empty_output_buffer(j_compress_ptr cinfo)
+{
+    mjpg_dest_ptr dest = (mjpg_dest_ptr) cinfo->dest;
+
+    memcpy(dest->outbuffer_cursor, dest->buffer, OUTPUT_BUF_SIZE);
+    dest->outbuffer_cursor += OUTPUT_BUF_SIZE;
+    *(dest->written) += OUTPUT_BUF_SIZE;
+
+    dest->pub.next_output_byte = dest->buffer;
+    dest->pub.free_in_buffer = OUTPUT_BUF_SIZE;
+
+    return TRUE;
+}
+
+/******************************************************************************
+Description.: called by jpeg_finish_compress after all data has been written.
+              Usually needs to flush buffer.
+Input Value.:
+Return Value:
+******************************************************************************/
+METHODDEF(void) term_destination(j_compress_ptr cinfo)
+{
+    mjpg_dest_ptr dest = (mjpg_dest_ptr) cinfo->dest;
+    size_t datacount = OUTPUT_BUF_SIZE - dest->pub.free_in_buffer;
+
+    /* Write any data remaining in the buffer */
+    memcpy(dest->outbuffer_cursor, dest->buffer, datacount);
+    dest->outbuffer_cursor += datacount;
+    *(dest->written) += datacount;
+}
+
+/******************************************************************************
+Description.: Prepare for output to a stdio stream.
+Input Value.: buffer is the already allocated buffer memory that will hold
+              the compressed picture. "size" is the size in bytes.
+Return Value: -
+******************************************************************************/
+GLOBAL(void) dest_buffer(j_compress_ptr cinfo, unsigned char *buffer, int size, int *written)
+{
+    mjpg_dest_ptr dest;
+
+    if(cinfo->dest == NULL) {
+        cinfo->dest = (struct jpeg_destination_mgr *)(*cinfo->mem->alloc_small)((j_common_ptr) cinfo, JPOOL_PERMANENT, sizeof(mjpg_destination_mgr));
+    }
+
+    dest = (mjpg_dest_ptr) cinfo->dest;
+    dest->pub.init_destination = init_destination;
+    dest->pub.empty_output_buffer = empty_output_buffer;
+    dest->pub.term_destination = term_destination;
+    dest->outbuffer = buffer;
+    dest->outbuffer_size = size;
+    dest->outbuffer_cursor = buffer;
+    dest->written = written;
+}
 
 void finishDecoding(void){
 
@@ -53,14 +145,9 @@ void prepareDecoding(unsigned char* inJpg, unsigned long inJpgSize)
 	jpeg_read_header(&dinfo,TRUE);
  	data = jpeg_read_coefficients(&dinfo);
 	//printf ("pass");
-
-
-
-
-
 }
 
-void prepareEncoding(unsigned char** outJpg, unsigned long* outJpgSize)
+void prepareEncoding(unsigned char* outJpgBuffer, int outJpgBufSize,int* written)
 {
 
 
@@ -80,7 +167,9 @@ void prepareEncoding(unsigned char** outJpg, unsigned long* outJpgSize)
 	//cinfo.dct_method = JDCT_FASTEST; 
 	
 	//cinfo.raw_data_in = TRUE; // Supply downsampled data 
-	jpeg_mem_dest(&cinfo,outJpg,outJpgSize);
+
+    dest_buffer(&cinfo, outJpgBuffer, outJpgBufSize, written);
+    //jpeg_mem_dest(&cinfo,outJpg,outJpgSize);
 	//jpeg_start_compress(&cinfo, TRUE);
 	//jpeg_write_header(&cinfo);
 	//printf ("pass2");
@@ -94,10 +183,12 @@ void copyData()
 
 
 
-int ju_processFrame(unsigned char* inJpg, unsigned long inJpgSize, unsigned char** outJpg, unsigned long* outJpgSize)
+int ju_processFrame(unsigned char* inJpg, unsigned long inJpgSize, unsigned char* outJpgBuf,  int outJpgBufSize)
 {
+    static int written;
 	prepareDecoding(inJpg,inJpgSize);
-	prepareEncoding(outJpg,outJpgSize);
+    written=0;// just in case
+    prepareEncoding(outJpgBuf,outJpgBufSize,&written);
 	
 	copyData();
 
@@ -106,7 +197,7 @@ int ju_processFrame(unsigned char* inJpg, unsigned long inJpgSize, unsigned char
     jpeg_finish_compress(&cinfo);
     jpeg_finish_decompress(&dinfo);
 
-	return 0;//TODO error handling!!!
+    return written;
 }
 
 #define MARKER_START ((unsigned char)0xFF)

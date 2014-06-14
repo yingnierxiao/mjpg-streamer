@@ -1,6 +1,12 @@
 #ifndef JPEG_UTILS_H
 #define JPEG_UTILS_H
 
+
+
+#define OUTPUT_BUF_SIZE (4*1024*1024)
+
+
+
 /******************************************************************************
 Description.: jpeg types to detect
 ******************************************************************************/
@@ -27,13 +33,13 @@ Input Value.:
 	char* inJpg     : jpeg to re-encode
 	long inJpgSize  : jpeg size
 Input-output Value.: 
-	char** outJpg   : buffer for re-encoded jpeg
-	long* outJpgSize: buffer for re-encoded jpeg size
+    char* outJpgBuf   : buffer for re-encoded jpeg
+    int outJpgBufSize : buffer for re-encoded jpeg size
 Return Value:
-	TRUE on success
+    image size on success
 ******************************************************************************/
 
- int ju_processFrame(unsigned char* inJpg, unsigned long inJpgSize, unsigned char** outJpg, unsigned long* outJpgSize);
+int ju_processFrame(unsigned char* inJpg, unsigned long inJpgSize, unsigned char* outJpgBuf,  int outJpgBufSize);
 
 /******************************************************************************
 Description.: cropping image to fit network channel 
