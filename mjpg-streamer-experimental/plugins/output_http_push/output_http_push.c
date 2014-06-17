@@ -196,143 +196,149 @@ void *worker_thread(void *arg)
 
 	
 	
-	if(!connected)
-	{
-		connected = su_connectOutput(&wSocket,writeAddress);
-		if(connected)
-		{
-			connectAttempts=reconnectAttempts;
-			connected=su_startPost(wSocket,POST_REQUEST,arguments,server,iPort); 
-		}else
-		{
-			connectAttempts--;
-			nanosleep(&sleepTime1,&remain);
-		}
-	}		
-	
-		
-	if(!connected){
-		DBG("Connection failed! connected =%d\n",connected);
-		continue;	
-
-
-	}
-	DBG("waiting for fresh frame\n");
-	
-	
-	my_timestamp startTime = su_getCurUsec();
-    DBG("truing mutex\n");
-    usleep(1);
-        pthread_mutex_lock(&pglobal->in[input_number].db);
-           DBG("muuutex\n");
-	// just sending all
-	if(frameTime==0){
-		pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
-	}
-        /* read buffer */
-        frame_size = pglobal->in[input_number].size;
-
-        /* check if buffer for frame is large enough, increase it if necessary */
-        if(frame_size > max_frame_size) {
-            DBG("increasing buffer size to %d\n", (int)frame_size);
-
-            max_frame_size = frame_size + (1 << 16);
-            if((tmp_framebuffer = realloc(frame, max_frame_size)) == NULL) {
-                pthread_mutex_unlock(&pglobal->in[input_number].db);
-                LOG("not enough memory\n");
-                return NULL;
+        if(!connected)
+        {
+            if(wSocket!=0)
+            {
+                close(wSocket);
+                wSocket=0;
             }
 
-            frame = tmp_framebuffer;
+            connected = su_connectOutput(&wSocket,writeAddress);
+            if(connected)
+            {
+                connectAttempts=reconnectAttempts;
+                connected=su_startPost(wSocket,POST_REQUEST,arguments,server,iPort);
+            }else
+            {
+                connectAttempts--;
+                nanosleep(&sleepTime1,&remain);
+            }
         }
 
-        if(frame_size>0)
+
+        if(!connected){
+            DBG("Connection failed! connected =%d\n",connected);
+            continue;
+
+
+        }
+        DBG("waiting for fresh frame\n");
+
+
+        my_timestamp startTime = su_getCurUsec();
+        DBG("truing mutex\n");
+        usleep(1);
+            pthread_mutex_lock(&pglobal->in[input_number].db);
+               DBG("muuutex\n");
+        // just sending all
+        if(frameTime==0){
+            pthread_cond_wait(&pglobal->in[input_number].db_update, &pglobal->in[input_number].db);
+        }
+            /* read buffer */
+            frame_size = pglobal->in[input_number].size;
+
+            /* check if buffer for frame is large enough, increase it if necessary */
+            if(frame_size > max_frame_size) {
+                DBG("increasing buffer size to %d\n", (int)frame_size);
+
+                max_frame_size = frame_size + (1 << 16);
+                if((tmp_framebuffer = realloc(frame, max_frame_size)) == NULL) {
+                    pthread_mutex_unlock(&pglobal->in[input_number].db);
+                    LOG("not enough memory\n");
+                    return NULL;
+                }
+
+                frame = tmp_framebuffer;
+            }
+
+            if(frame_size>0)
+            {
+                /* copy frame to our local buffer now */
+                memcpy(frame, pglobal->in[input_number].buf, frame_size);
+            }
+            DBG("muuutex frreeee\n");
+            /* allow others to access the global buffer again */
+            pthread_mutex_unlock(&pglobal->in[input_number].db);
+
+
+            int jpgType = frame_size>0?ju_checkIfJpeg(frame, frame_size):JPEG_BAD;
+
+
+            switch(jpgType){
+                // bad frame come. this happen sometimes, causing jpeg lib to crush
+                case JPEG_BAD:
+                DBG("bad jpg\n");
+                    continue; // just skip it
+                // need to convert
+            case JPEG_GOOD_REGULAR:
+                DBG("regular jpg\n");
+                sendsize = ju_processFrame(frame, frame_size, progressiveBuffer, progressiveBufferSize);
+                sendbuf = progressiveBuffer;
+                break;
+                // already progressive
+            case JPEG_GOOD_PROGRESSIVE:
+                DBG("progressive jpg\n");
+                sendbuf=frame;
+                sendsize=frame_size;
+                break;
+            default:
+                continue;//just in case
+            };
+
+
+
+
+        /*cropping image */
+
+        actualSize = ju_cropJpeg(sendbuf,sendsize,cropSize);
+
+        my_timestamp codingTime=su_getCurUsec()-startTime;
+
+
+
+        DBG("sending frame\n");
+        connected =su_sendFrame(wSocket, FRAME_STRING, sendbuf, actualSize );
+
+
+        OPRINT("ct = %d\n",(int) codingTime);
+        if(connected)
         {
-            /* copy frame to our local buffer now */
-            memcpy(frame, pglobal->in[input_number].buf, frame_size);
+
+            if(frameTime>0){
+
+                my_timestamp endtime = su_getCurUsec();
+                my_timestamp realFrameTime = endtime-startTime;
+                my_timestamp sendTime = endtime-codingTime;
+
+                my_timestamp usableFrameTime =frameTime;
+                if((codingTime>(3*frameTime/4)))
+                {
+                    OPRINT("ERROR: Sending images too fast, unable to convert in time\n");
+                    usableFrameTime = codingTime*4/3;
+                OPRINT("fps downed to %d, base ft = %d, ft = %d \n",(int)(1000000/usableFrameTime), (int)frameTime,(int)usableFrameTime);
+
+                }
+
+
+
+                //    bytes/microsec
+                double bpu =((double)actualSize)/(double)sendTime;
+                //   time we want to send data
+                double desiredSendTime = (double)(usableFrameTime-codingTime);
+                // cropping size for jpeg calculated
+                cropSize =(long)(desiredSendTime*bpu);
+
+                my_timestamp timeToSleep = usableFrameTime-realFrameTime;
+
+                if(timeToSleep>0)
+                {
+                    struct timespec sleepTime={0,timeToSleep*1000};
+                    nanosleep(&sleepTime,&remain);
+                }
+            }
+
         }
-        DBG("muuutex frreeee\n");
-        /* allow others to access the global buffer again */
-        pthread_mutex_unlock(&pglobal->in[input_number].db);
-
-	
-        int jpgType = frame_size>0?ju_checkIfJpeg(frame, frame_size):JPEG_BAD;
-
-
-        switch(jpgType){
-            // bad frame come. this happen sometimes, causing jpeg lib to crush
-            case JPEG_BAD:
-            DBG("bad jpg\n");
-                continue; // just skip it
-            // need to convert
-        case JPEG_GOOD_REGULAR:
-            DBG("regular jpg\n");
-            sendsize = ju_processFrame(frame, frame_size, progressiveBuffer, progressiveBufferSize);
-            sendbuf = progressiveBuffer;
-            break;
-            // already progressive
-        case JPEG_GOOD_PROGRESSIVE:
-            DBG("progressive jpg\n");
-            sendbuf=frame;
-            sendsize=frame_size;
-            break;
-        default:
-            continue;//just in case
-        };
-
-
-
-
-    /*cropping image */
-
-    actualSize = ju_cropJpeg(sendbuf,sendsize,cropSize);
-	
-	my_timestamp codingTime=su_getCurUsec()-startTime;
-
-	
-
-	DBG("sending frame\n");
-    connected =su_sendFrame(wSocket, FRAME_STRING, sendbuf, actualSize );
-
-
-	OPRINT("ct = %d\n",(int) codingTime);
-	if(connected)
-	{
-
-		if(frameTime>0){
-
-			my_timestamp endtime = su_getCurUsec();
-			my_timestamp realFrameTime = endtime-startTime;
-			my_timestamp sendTime = endtime-codingTime;
-
-			my_timestamp usableFrameTime =frameTime;
-			if((codingTime>(3*frameTime/4)))
-			{
-				OPRINT("ERROR: Sending images too fast, unable to convert in time\n");
-				usableFrameTime = codingTime*4/3;
-			OPRINT("fps downed to %d, base ft = %d, ft = %d \n",(int)(1000000/usableFrameTime), (int)frameTime,(int)usableFrameTime);
-
-			}
-		
-		
-
-			//    bytes/microsec
-			double bpu =((double)actualSize)/(double)sendTime;
-			//   time we want to send data
-			double desiredSendTime = (double)(usableFrameTime-codingTime);
-			// cropping size for jpeg calculated			
-			cropSize =(long)(desiredSendTime*bpu);
-		
-			my_timestamp timeToSleep = usableFrameTime-realFrameTime;
-		
-			if(timeToSleep>0)
-			{
-				struct timespec sleepTime={0,timeToSleep*1000};
-				nanosleep(&sleepTime,&remain);
-			}	
-		}
-
-	}	
         
     }
 

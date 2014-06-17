@@ -176,6 +176,7 @@ bool su_connectOutput(int* writesock, struct sockaddr writeAddr)
     if((error=connect(localSocket, &writeAddr, sizeof(writeAddr))) < 0)
     {
         *writesock=0;
+        close(localSocket);
         DBG("Connect() failed! error %d %s\n",errno,strerror(errno));
         return false;
     }
