@@ -65,77 +65,77 @@ $(APP_BINARY): mjpg_streamer.c mjpg_streamer.h mjpg_streamer.o utils.c utils.h u
 	chmod 755 $(APP_BINARY)
 
 output_autofocus.so: mjpg_streamer.h utils.h
-	make -C plugins/output_autofocus all
+	$(MAKE) -C plugins/output_autofocus all
 	cp plugins/output_autofocus/output_autofocus.so .
 
 input_testpicture.so: mjpg_streamer.h utils.h
-	make -C plugins/input_testpicture all
+	$(MAKE) -C plugins/input_testpicture all
 	cp plugins/input_testpicture/input_testpicture.so .
 
 
 ifeq ($(USE_LIBV4L2),true)
 input_uvc.so: mjpg_streamer.h utils.h
-	make -C plugins/input_uvc USE_LIBV4L2=true all
+	$(MAKE) -C plugins/input_uvc USE_LIBV4L2=true all
 	cp plugins/input_uvc/input_uvc.so .
 else
 input_uvc.so: mjpg_streamer.h utils.h
-	make -C plugins/input_uvc all
+	$(MAKE) -C plugins/input_uvc all
 	cp plugins/input_uvc/input_uvc.so .
 endif
 
 output_file.so: mjpg_streamer.h utils.h
-	make -C plugins/output_file all
+	$(MAKE) -C plugins/output_file all
 	cp plugins/output_file/output_file.so .
 
 output_http_push.so: mjpg_streamer.h utils.h
-	make -C plugins/output_http_push all
+	$(MAKE) -C plugins/output_http_push all
 	cp plugins/output_http_push/output_http_push.so .
 
 ifeq ($(WXP_COMPAT),true)
 output_http.so: mjpg_streamer.h utils.h
-	make -C plugins/output_http WXP_COMPAT=true all
+	$(MAKE) -C plugins/output_http WXP_COMPAT=true all
 	cp plugins/output_http/output_http.so .
 else
 output_http.so: mjpg_streamer.h utils.h
-	make -C plugins/output_http all
+	$(MAKE) -C plugins/output_http all
 	cp plugins/output_http/output_http.so .
 endif
 
 output_udp.so: mjpg_streamer.h utils.h
-	make -C plugins/output_udp all
+	$(MAKE) -C plugins/output_udp all
 	cp plugins/output_udp/output_udp.so .
 	
 output_mars2020.so: mjpg_streamer.h utils.h
-	make -C plugins/output_mars2020 all
+	$(MAKE) -C plugins/output_mars2020 all
 	cp plugins/output_mars2020/output_mars2020.so .
 
 input_file.so:
-	make -C plugins/input_file all
+	$(MAKE) -C plugins/input_file all
 	cp plugins/input_file/input_file.so .
 
 output_rtsp.so: mjpg_streamer.h utils.h
-	make -C plugins/output_rtsp all
+	$(MAKE) -C plugins/output_rtsp all
 	cp plugins/output_rtsp/output_rtsp.so .
 	
 input_ptp2.so: mjpg_streamer.h utils.h
-	make -C plugins/input_ptp2 all
+	$(MAKE) -C plugins/input_ptp2 all
 	cp plugins/input_ptp2/input_ptp2.so .	
 	
 input_megatec.so: mjpg_streamer.h utils.h
-	make -C plugins/input_megatec all
+	$(MAKE) -C plugins/input_megatec all
 	cp plugins/input_megatec/input_megatec.so .	
 	
 input_pylon.so: mjpg_streamer.h utils.h
-	make -C plugins/input_pylon all
+	$(MAKE) -C plugins/input_pylon all
 	cp plugins/input_megatec/input_pylon.so .	
 
 input_http.so: mjpg_streamer.h utils.h
-	make -C plugins/input_http all
+	$(MAKE) -C plugins/input_http all
 	cp plugins/input_http/input_http.so .
 
 input_raspicam.so: mjpg_streamer.h utils.h
 	cd plugins/input_raspicam/build; cmake ..
-	make -C plugins/input_raspicam/build
+	$(MAKE) -C plugins/input_raspicam/build
 	cp plugins/input_raspicam/build/libinput_raspicam.so ./input_raspicam.so
 
 # The viewer plugin requires the SDL library for compilation
@@ -144,22 +144,22 @@ input_raspicam.so: mjpg_streamer.h utils.h
 # execute the following command:
 # make output_viewer.so
 output_viewer.so: mjpg_streamer.h utils.h
-	make -C plugins/output_viewer all
+	$(MAKE) -C plugins/output_viewer all
 	cp plugins/output_viewer/output_viewer.so .
 
 # cleanup
 clean:
-	make -C plugins/input_uvc $@
-	make -C plugins/input_testpicture $@
-	make -C plugins/output_file $@
-	make -C plugins/output_http $@
-	make -C plugins/output_http_push $@
-	make -C plugins/output_udp $@
-	make -C plugins/output_autofocus $@
-	make -C plugins/output_viewer $@
-	make -C plugins/output_rtsp $@
-#	make -C plugins/output_mars2020 $@
-	make -C plugins/input_http $@
+	$(MAKE) -C plugins/input_uvc $@
+	$(MAKE) -C plugins/input_testpicture $@
+	$(MAKE) -C plugins/output_file $@
+	$(MAKE) -C plugins/output_http $@
+	$(MAKE) -C plugins/output_http_push $@
+	$(MAKE) -C plugins/output_udp $@
+	$(MAKE) -C plugins/output_autofocus $@
+	$(MAKE) -C plugins/output_viewer $@
+	$(MAKE) -C plugins/output_rtsp $@
+#	$(MAKE) -C plugins/output_mars2020 $@
+	$(MAKE) -C plugins/input_http $@
 	rm -f *.a *.o $(APP_BINARY) core *~ *.so *.lo
 	rm -f -r plugins/input_raspicam/build/*
 	echo "This folder is where the plugin gets built" > plugins/input_raspicam/build/Readme.md
@@ -171,10 +171,13 @@ tgz: clean
 
 # install MJPG-streamer and example webpages
 install: all
-	install --mode=755 $(APP_BINARY) $(DESTDIR)/bin
+	install -d $(DESTDIR)/bin/ 
+	install -d $(DESTDIR)/lib/
+	install -d $(DESTDIR)/www/ 
+	install --mode=755 $(APP_BINARY) $(DESTDIR)/bin/
 	install --mode=644 $(PLUGINS) $(DESTDIR)/lib/
-	install --mode=755 -d $(DESTDIR)/www
-	install --mode=644 -D www/* $(DESTDIR)/www
+	install --mode=755 -d $(DESTDIR)/www/
+	install --mode=644 -D www/* $(DESTDIR)/www/
 
 # remove the files installed above
 uninstall:
