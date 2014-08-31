@@ -1,0 +1,15 @@
+Source: mjpg-streamer
+Section: unknown
+Priority: extra
+Maintainer: David Parunakian <dp@dp.io>
+Build-Depends: debhelper (>= 8.0.0), libjpeg-dev
+Standards-Version: 3.9.3
+Homepage: https://github.com/dpq/mjpg-streamer
+#Vcs-Git: git://git.debian.org/collab-maint/mjpg-streamer.git
+#Vcs-Browser: http://git.debian.org/?p=collab-maint/mjpg-streamer.git;a=summary
+
+Package: mjpg-streamer
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: <insert up to 60 chars description>
+ <insert long description, indented with spaces>
