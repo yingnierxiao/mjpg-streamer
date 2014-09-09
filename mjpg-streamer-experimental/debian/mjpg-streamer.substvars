@@ -1,2 +1,2 @@
-shlibs:Depends=libc6 (>= 2.4), libc6 (>= 2.13-28), libgcc1 (>= 1:4.4.0), libjpeg8 (>= 8c)
+shlibs:Depends=libc6 (>= 2.14), libjpeg8 (>= 8c)
 misc:Depends=
